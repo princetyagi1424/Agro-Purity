@@ -34,79 +34,93 @@ export function HomePage() {
 
   return (
     <div>
-      <section className="card" style={{ textAlign: 'center', padding: '2rem 1.25rem' }}>
-        <h1 style={{ margin: '0 0 0.5rem', color: 'var(--color-primary-dark, #1b4332)', fontSize: '1.75rem' }}>
-          {t('home.title')}
-        </h1>
-        <p style={{ color: 'var(--color-text-muted, #5c6b5a)', maxWidth: 520, margin: '0 auto 1.25rem' }}>
-          {t('home.tagline')}
-        </p>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link to="/inspect" className="btn btn-primary">{t('home.start')}</Link>
-          <Link to="/demo" className="btn btn-secondary">{t('home.tryDemo')}</Link>
+      <section className="hero">
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="hero-kicker">🌾 AgroPurity · On-device screening</div>
+        <h1>Know Your Wheat. Improve Your Harvest.</h1>
+        <p className="hero-lead">{t('home.tagline')}</p>
+        <div className="hero-actions">
+          <Link to="/inspect" className="btn btn-primary">
+            {t('home.start')}
+          </Link>
+          <Link to="/demo" className="btn btn-secondary">
+            {t('home.tryDemo')}
+          </Link>
         </div>
       </section>
 
-      <div className="disclaimer" role="note">{t('disclaimer')}</div>
+      <h2 className="section-title">{t('home.howTitle')}</h2>
+      <div className="feature-grid">
+        <div className="feature-card">
+          <div className="icon" aria-hidden="true">📷</div>
+          <h3>1</h3>
+          <p>{t('home.step1')}</p>
+        </div>
+        <div className="feature-card">
+          <div className="icon" aria-hidden="true">✨</div>
+          <h3>2</h3>
+          <p>{t('home.step2')}</p>
+        </div>
+        <div className="feature-card">
+          <div className="icon" aria-hidden="true">🔬</div>
+          <h3>3</h3>
+          <p>{t('home.step3')}</p>
+        </div>
+        <div className="feature-card">
+          <div className="icon" aria-hidden="true">💾</div>
+          <h3>4</h3>
+          <p>{t('home.step4')}</p>
+        </div>
+      </div>
 
-      <section className="card">
-        <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>{t('home.howTitle')}</h2>
-        <ol className="steps">
-          <li>{t('home.step1')}</li>
-          <li>{t('home.step2')}</li>
-          <li>{t('home.step3')}</li>
-          <li>{t('home.step4')}</li>
-        </ol>
-      </section>
-
-      <section className="card">
-        <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>{t('home.photoHelpTitle')}</h2>
-        <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--color-text-muted, #5c6b5a)' }}>
-          <li>{t('home.photoHelp1')}</li>
-          <li>{t('home.photoHelp2')}</li>
-          <li>{t('home.photoHelp3')}</li>
-          <li>{t('home.photoHelp4')}</li>
-        </ul>
-        {'speechSynthesis' in window && (
-          <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: '0.75rem' }} onClick={toggleSpeak}>
-            {speaking ? t('home.stopAloud') : t('home.readAloud')}
-          </button>
-        )}
-      </section>
-
-      <section className="card">
-        <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>{t('home.supportedTitle')}</h2>
-        <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--color-text-muted, #5c6b5a)' }}>
-          <li><strong>{t('home.wheat')}</strong></li>
+      <div className="card">
+        <h2 className="section-title" style={{ marginTop: 0 }}>{t('home.supportedTitle')}</h2>
+        <ul className="steps">
+          <li>{t('home.wheat')}</li>
           <li>{t('home.otherGrains')}</li>
           <li>{t('home.overlap')}</li>
           <li>{t('home.notOfficial')}</li>
           <li>{t('home.onDevice')}</li>
         </ul>
-      </section>
+      </div>
 
-      <section className="card">
-        <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>{t('home.privacyTitle')}</h2>
-        <p style={{ margin: 0, color: 'var(--color-text-muted, #5c6b5a)', fontSize: '0.95rem' }}>
-          {t('home.privacyBody')}
-        </p>
-      </section>
+      <div className="card">
+        <h2 className="section-title" style={{ marginTop: 0 }}>{t('home.privacyTitle')}</h2>
+        <p style={{ margin: 0, color: 'var(--muted)' }}>{t('home.privacyBody')}</p>
+      </div>
+
+      <div className="card">
+        <h2 className="section-title" style={{ marginTop: 0 }}>{t('home.photoHelpTitle')}</h2>
+        <ol className="steps">
+          <li>{t('home.photoHelp1')}</li>
+          <li>{t('home.photoHelp2')}</li>
+          <li>{t('home.photoHelp3')}</li>
+          <li>{t('home.photoHelp4')}</li>
+        </ol>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={toggleSpeak} style={{ marginTop: '0.75rem' }}>
+          {speaking ? t('home.stopAloud') : t('home.readAloud')}
+        </button>
+      </div>
+
+      <div className="disclaimer">{t('disclaimer')}</div>
 
       {recent.length > 0 && (
-        <section className="card">
-          <h2 style={{ marginTop: 0, fontSize: '1.15rem' }}>{t('home.recent')}</h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <div className="card">
+          <h2 className="section-title" style={{ marginTop: 0 }}>{t('home.recent')}</h2>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {recent.map((r) => (
-              <li key={r.id} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border, #d8e0d4)' }}>
-                <Link to={`/history/${r.id}`}>
-                  {new Date(r.createdAt).toLocaleString()} — {r.grainType} — W:{r.counts.whole} B:{r.counts.broken} F:{r.counts.foreign}
-                  {(r.inputSource === 'demo' || r.notes === 'synthetic-demo') ? ` (${t('history.synthetic')})` : ''}
+              <li key={r.id} style={{ padding: '0.55rem 0', borderBottom: '1px solid var(--line)', color: 'var(--muted)', fontSize: '0.9rem' }}>
+                <Link to={`/history/${r.id}`} style={{ fontWeight: 600 }}>
+                  {new Date(r.createdAt).toLocaleString()}
                 </Link>
+                {' · '}{r.grainType} · W:{r.counts.whole} B:{r.counts.broken} F:{r.counts.foreign}
               </li>
             ))}
           </ul>
-          <Link to="/history" style={{ display: 'inline-block', marginTop: '0.75rem' }}>{t('home.viewAll')}</Link>
-        </section>
+          <Link to="/history" className="btn btn-secondary btn-sm" style={{ marginTop: '0.85rem' }}>
+            {t('home.viewAll')}
+          </Link>
+        </div>
       )}
     </div>
   );
