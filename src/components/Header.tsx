@@ -5,6 +5,7 @@ import { useI18n, type Locale } from '../i18n';
 const LOCALES: { code: Locale; native: string }[] = [
   { code: 'en', native: 'English' },
   { code: 'hi', native: 'हिन्दी' },
+  { code: 'bho', native: 'भोजपुरी' },
   { code: 'ta', native: 'தமிழ்' },
   { code: 'pa', native: 'ਪੰਜਾਬੀ' },
   { code: 'haryanvi', native: 'हरियाणवी' },

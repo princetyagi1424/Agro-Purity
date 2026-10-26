@@ -6,9 +6,10 @@ import { ta } from './ta';
 import { pa } from './pa';
 import { haryanvi } from './haryanvi';
 import { mr } from './mr';
+import { bho } from './bho';
 
 const STORAGE_KEY = 'agropurity-lang';
-const VALID: Locale[] = ['en', 'hi', 'ta', 'pa', 'haryanvi', 'mr'];
+const VALID: Locale[] = ['en', 'hi', 'ta', 'pa', 'haryanvi', 'mr', 'bho'];
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
   en: en as Record<TranslationKey, string>,
@@ -17,6 +18,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
   pa: pa as Record<TranslationKey, string>,
   haryanvi: haryanvi as Record<TranslationKey, string>,
   mr: mr as Record<TranslationKey, string>,
+  bho: bho as Record<TranslationKey, string>,
 };
 
 function detectInitial(): Locale {
@@ -35,6 +37,7 @@ export function localeToBcp47(locale: Locale): string {
     case 'pa': return 'pa-IN';
     case 'haryanvi': return 'hi-IN';
     case 'mr': return 'mr-IN';
+    case 'bho': return 'hi-IN';
     default: return 'en-IN';
   }
 }
@@ -56,7 +59,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(STORAGE_KEY, next); } catch { /* */ }
   }, []);
   useEffect(() => {
-    document.documentElement.lang = locale === 'haryanvi' ? 'hi' : locale;
+    document.documentElement.lang =
+      locale === 'haryanvi' || locale === 'bho' ? 'hi' : locale;
   }, [locale]);
   const t = useCallback(
     (key: TranslationKey) => dictionaries[locale]?.[key] ?? dictionaries.en[key] ?? key,

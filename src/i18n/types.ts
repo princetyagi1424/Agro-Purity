@@ -1,4 +1,4 @@
-export type Locale = 'en' | 'hi' | 'ta' | 'pa' | 'haryanvi' | 'mr';
+export type Locale = 'en' | 'hi' | 'ta' | 'pa' | 'haryanvi' | 'mr' | 'bho';
 
 export type TranslationKey =
   "appName" |
@@ -16,6 +16,7 @@ export type TranslationKey =
   "lang.pa" |
   "lang.haryanvi" |
   "lang.mr" |
+  "lang.bho" |
   "home.title" |
   "home.tagline" |
   "home.start" |
