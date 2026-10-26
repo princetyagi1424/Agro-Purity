@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { listRecords, getRecord, getImageBlob, deleteRecord, clearAllRecords } from '../lib/storage/db';
 import type { InspectionRecord } from '../types';
 import { useI18n } from '../i18n';
+import { buildInspectionCsv, downloadTextFile, printInspectionReport } from '../lib/exportReport';
 
 export function HistoryPage() {
   const { id } = useParams();
@@ -88,7 +89,7 @@ function RecordDetail({ id }: { id: string }) {
     })();
     return () => { alive = false; };
   }, [id, t]);
-  if (error) return <div className="card"><div className="alert alert-error">{error}</div><Link to="/history">{t('history.back')}</Link></div>;
+  if (error) return <div className="card"><div className="alert alert-error" role="alert">{error}</div><Link to="/history">{t('history.back')}</Link></div>;
   if (!record) return <div className="card" style={{ textAlign: 'center' }}><div className="spinner" /></div>;
   const counts = record.adjustedCounts ?? record.counts;
   const isDemo = record.inputSource === 'demo' || record.notes === 'synthetic-demo';
@@ -118,6 +119,26 @@ function RecordDetail({ id }: { id: string }) {
             const a = document.createElement('a'); a.href = url; a.download = `${record.id}.json`; a.click();
             URL.revokeObjectURL(url);
           }}>{t('inspect.exportJson')}</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+            if (!record) return;
+            const csv = buildInspectionCsv({
+              id: record.id, createdAt: record.createdAt, grainType: record.grainType,
+              inputSource: record.inputSource, algorithmVersion: record.algorithmVersion,
+              synthetic: isDemo, counts: record.counts, adjustedCounts: record.adjustedCounts,
+              detections: record.detections, disclaimer: record.disclaimer,
+            });
+            downloadTextFile(csv, `${record.id}.csv`, 'text/csv;charset=utf-8');
+          }}>{t('inspect.exportCsv')}</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+            if (!record) return;
+            printInspectionReport({
+              title: t('history.title'), disclaimer: record.disclaimer,
+              meta: [['ID', record.id], [t('inspect.title'), record.grainType], ['Algorithm', record.algorithmVersion]],
+              counts: record.adjustedCounts ?? record.counts,
+              labels: { whole: t('inspect.whole'), broken: t('inspect.broken'), foreign: t('inspect.foreign'), uncertain: t('inspect.uncertain') },
+              imageSrc: annUrl || origUrl, synthetic: isDemo, syntheticLabel: t('history.synthetic'),
+            });
+          }}>{t('inspect.printReport')}</button>
           {annUrl && <a className="btn btn-secondary btn-sm" href={annUrl} download={`${record.id}-annotated.png`}>{t('inspect.downloadAnn')}</a>}
         </div>
       </div>
