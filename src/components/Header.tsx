@@ -15,7 +15,7 @@ export function Header() {
   return (
     <header className="app-header">
       <Link to="/" className="brand" aria-label={t('appName')}>
-        <span aria-hidden="true">🌾</span>
+        <span className="brand-mark" aria-hidden="true">🌾</span>
         {t('appName')}
       </Link>
       <nav aria-label="Main">
@@ -25,15 +25,30 @@ export function Header() {
         <Link to="/install">{t('nav.install')}</Link>
         <label className="lang-select-wrap">
           <span className="sr-only">{t('lang.label')}</span>
-          <select className="lang-select" value={locale} aria-label={t('lang.label')} onChange={(e) => setLocale(e.target.value as Locale)}>
-            {LOCALES.map((l) => (<option key={l.code} value={l.code}>{l.native}</option>))}
+          <select
+            className="lang-select"
+            value={locale}
+            aria-label={t('lang.label')}
+            onChange={(e) => setLocale(e.target.value as Locale)}
+          >
+            {LOCALES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.native}
+              </option>
+            ))}
           </select>
         </label>
         {canInstall && !isInstalled && (
-          <button type="button" className="btn btn-accent btn-sm" onClick={async () => {
-            const r = await promptInstall();
-            if (r.outcome === 'unavailable') navigate('/install');
-          }}>{t('nav.installApp')}</button>
+          <button
+            type="button"
+            className="btn btn-accent btn-sm"
+            onClick={async () => {
+              const r = await promptInstall();
+              if (r.outcome === 'unavailable') navigate('/install');
+            }}
+          >
+            {t('nav.installApp')}
+          </button>
         )}
       </nav>
     </header>

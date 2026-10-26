@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Header } from './components/Header';
+import { WheatTrail } from './components/WheatTrail';
 import { HomePage } from './pages/HomePage';
 import { InspectPage } from './pages/InspectPage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -9,6 +10,7 @@ import { InstallPage } from './pages/InstallPage';
 export default function App() {
   return (
     <BrowserRouter>
+      <WheatTrail />
       <Header />
       <main className="main-content">
         <Routes>
@@ -20,6 +22,11 @@ export default function App() {
           <Route path="/install" element={<InstallPage />} />
         </Routes>
       </main>
+      <footer className="app-footer">
+        <strong>AgroPurity</strong>
+        {' · '}
+        Preliminary on-device grain screening · Not an official grade or certification
+      </footer>
     </BrowserRouter>
   );
 }
