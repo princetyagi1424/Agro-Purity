@@ -117,7 +117,4 @@ export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   noiseAreaMax: 35,
 };
 
-export const ALGORITHM_VERSION = '1.0.1-prototype';
-
-export const DISCLAIMER =
-  'Preliminary visual screening aid only. Not an official grade, AGMARK certification, or legal determination. Results are heuristic and may contain errors. Always verify with authorised methods.';
+export const ALGORITHM_VERSION = '1.1.0-prototype';
