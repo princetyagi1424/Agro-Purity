@@ -46,28 +46,36 @@ export async function saveRecord(
   originalBlob?: Blob,
   annotatedBlob?: Blob
 ): Promise<void> {
-  const db = await getDb();
-  const tx = db.transaction([RECORDS_STORE, IMAGES_STORE], 'readwrite');
+  try {
+    const db = await getDb();
+    const tx = db.transaction([RECORDS_STORE, IMAGES_STORE], 'readwrite');
 
-  if (originalBlob && record.originalImageKey) {
-    await tx.objectStore(IMAGES_STORE).put(originalBlob, record.originalImageKey);
-  }
-  if (annotatedBlob && record.annotatedImageKey) {
-    await tx.objectStore(IMAGES_STORE).put(annotatedBlob, record.annotatedImageKey);
-  }
-  await tx.objectStore(RECORDS_STORE).put(record);
-  await tx.done;
-
-  const all = await db.getAllFromIndex(RECORDS_STORE, 'by-date');
-  if (all.length > MAX_RECORDS) {
-    const toDelete = all.slice(0, all.length - MAX_RECORDS);
-    const delTx = db.transaction([RECORDS_STORE, IMAGES_STORE], 'readwrite');
-    for (const r of toDelete) {
-      if (r.originalImageKey) await delTx.objectStore(IMAGES_STORE).delete(r.originalImageKey);
-      if (r.annotatedImageKey) await delTx.objectStore(IMAGES_STORE).delete(r.annotatedImageKey);
-      await delTx.objectStore(RECORDS_STORE).delete(r.id);
+    if (originalBlob && record.originalImageKey) {
+      await tx.objectStore(IMAGES_STORE).put(originalBlob, record.originalImageKey);
     }
-    await delTx.done;
+    if (annotatedBlob && record.annotatedImageKey) {
+      await tx.objectStore(IMAGES_STORE).put(annotatedBlob, record.annotatedImageKey);
+    }
+    await tx.objectStore(RECORDS_STORE).put(record);
+    await tx.done;
+
+    const all = await db.getAllFromIndex(RECORDS_STORE, 'by-date');
+    if (all.length > MAX_RECORDS) {
+      const toDelete = all.slice(0, all.length - MAX_RECORDS);
+      const delTx = db.transaction([RECORDS_STORE, IMAGES_STORE], 'readwrite');
+      for (const r of toDelete) {
+        if (r.originalImageKey) await delTx.objectStore(IMAGES_STORE).delete(r.originalImageKey);
+        if (r.annotatedImageKey) await delTx.objectStore(IMAGES_STORE).delete(r.annotatedImageKey);
+        await delTx.objectStore(RECORDS_STORE).delete(r.id);
+      }
+      await delTx.done;
+    }
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : '';
+    if (name === 'QuotaExceededError') {
+      throw new Error('Storage full. Delete old history records and try again.');
+    }
+    throw err instanceof Error ? err : new Error('Failed to save inspection record.');
   }
 }
 

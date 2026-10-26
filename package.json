@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run && node --test tests/vision.test.mjs",
+    "test:unit": "vitest run",
+    "test:vision": "node --test tests/vision.test.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {
