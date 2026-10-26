@@ -1,0 +1,42 @@
+{
+  "dataset": {
+    "source": "https://zenodo.org/records/18222641",
+    "title": "Wheat Seed Quality Dataset",
+    "creator_note": "Wang, DL (Zenodo record 18222641)",
+    "licence_note": "Verify current Zenodo licence before redistribution; use with attribution.",
+    "train": 2700,
+    "val": 300,
+    "test": 500,
+    "classes_folder": ["chi", "chong", "healthy", "hei", "mei"],
+    "classes_en": ["scab_damaged", "insect_damaged", "apparently_normal", "black_germ", "mold_like"]
+  },
+  "model": {
+    "architecture": "MobileNetV3-Small (ImageNet pretrained; features frozen in completed run)",
+    "img_size": 224,
+    "training_completed": true,
+    "checkpoint_note": "Produced locally as wheat_mobilenet_v3_small_best.pt (~6MB); not committed to git by default"
+  },
+  "held_out_test": {
+    "n": 500,
+    "accuracy": 0.768,
+    "macro_f1": 0.7653,
+    "per_class": {
+      "chi": {"precision": 0.9595, "recall": 0.71, "f1": 0.8161, "support": 100},
+      "chong": {"precision": 0.8916, "recall": 0.74, "f1": 0.8087, "support": 100},
+      "healthy": {"precision": 0.6536, "recall": 1.0, "f1": 0.7905, "support": 100},
+      "hei": {"precision": 0.9455, "recall": 0.52, "f1": 0.671, "support": 100},
+      "mei": {"precision": 0.6444, "recall": 0.87, "f1": 0.7404, "support": 100}
+    }
+  },
+  "validation": {"n": 300, "accuracy": 0.7167, "macro_f1": 0.7193},
+  "wheatvision_mendeley": {
+    "url": "https://data.mendeley.com/datasets/bx27hg9vwd/1",
+    "status": "Listing found (CC BY 4.0 claimed); download API unauthorized in this environment — not used for training"
+  },
+  "limitations": [
+    "Single-kernel lab-style images, not multi-grain farm phone photos",
+    "RGB cannot prove germination, moisture, or genetic purity",
+    "Metrics are held-out dataset metrics only",
+    "Browser app multi-object path remains classical CV; classifier is research single-seed path"
+  ]
+}
