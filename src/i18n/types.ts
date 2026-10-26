@@ -90,6 +90,14 @@ export type TranslationKey =
   "inspect.photoTip4" |
   "inspect.savedOk" |
   "inspect.exportOk" |
+  "inspect.stagePrepare" |
+  "inspect.stageAnalyse" |
+  "inspect.stageAnnotate" |
+  "inspect.stageDone" |
+  "inspect.exportCsv" |
+  "inspect.printReport" |
+  "inspect.statusRegion" |
+  "inspect.processingHint" |
   "quality.too_small" |
   "quality.too_dark" |
   "quality.too_bright" |
@@ -137,4 +145,5 @@ export type TranslationKey =
   "install.offline3" |
   "common.loading" |
   "common.error" |
-  "common.back";
+  "common.back" |
+  "common.confirm";
