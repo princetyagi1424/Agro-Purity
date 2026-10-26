@@ -52,4 +52,28 @@ describe('analyzeImageData consistency', () => {
     expect(sum).toBe(res.detections.length);
     expect(res.counts.foreign).toBe(0);
   });
+  it('keeps foreground as dark-on-light when dark pixels exceed half because the grain sample is dense', () => {
+    const W = 320, H = 240;
+    const data = new Uint8ClampedArray(W * H * 4);
+    // A dim white-paper background (still brighter than the foreground), with a
+    // dense, touching cluster of warm grains covering more than half the image.
+    for (let i = 0; i < W * H; i++) {
+      data[i * 4] = 220; data[i * 4 + 1] = 220; data[i * 4 + 2] = 215; data[i * 4 + 3] = 255;
+    }
+    for (let y = 12; y < 228; y++) for (let x = 12; x < 308; x++) {
+      const cx = 26 + Math.floor((x - 12) / 28) * 28;
+      const cy = 22 + Math.floor((y - 12) / 22) * 22;
+      const nx = (x - cx) / 16, ny = (y - cy) / 13;
+      if (nx * nx + ny * ny <= 1) {
+        const p = (y * W + x) * 4;
+        data[p] = 154; data[p + 1] = 116; data[p + 2] = 62; data[p + 3] = 255;
+      }
+    }
+    const res = analyzeImageData(data, W, H, { forceContinue: true });
+    expect(res.diagnostics.polarity).toBe('dark-on-light');
+    expect(res.detections.length).toBeGreaterThan(0);
+    expect(res.detections.length).toBeLessThan(100);
+    expect(res.detections.every((d) => d.bbox.width < W * 0.95 && d.bbox.height < H * 0.95)).toBe(true);
+  });
+
 });
