@@ -18,9 +18,15 @@ function createSyntheticGrainImage(): string {
     { x: 320, y: 90, rx: 30, ry: 19, rot: 0.5, color: '#b8954a' },
     { x: 420, y: 140, rx: 27, ry: 18, rot: -0.4, color: '#c9a85e' },
     { x: 180, y: 340, rx: 22, ry: 10, rot: 0.8, color: '#c4a35a' },
-    { x: 500, y: 300, rx: 22, ry: 20, rot: 0, color: '#1a1a1a' }, // dark foreign candidate
+    { x: 500, y: 300, rx: 22, ry: 20, rot: 0, color: '#000000' }, // solid dark foreign candidate
   ];
   for (const g of grains) {
+    // Solid dark foreign marker uses a hard rectangle (no anti-aliased edge bias)
+    if (g.color === '#000000' || g.color === '#1a1a1a') {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(g.x - g.rx, g.y - g.ry, g.rx * 2, g.ry * 2);
+      continue;
+    }
     ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.rot);
     ctx.beginPath(); ctx.ellipse(0, 0, g.rx, g.ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = g.color; ctx.fill(); ctx.restore();
@@ -142,7 +148,7 @@ export function DemoPage() {
             <span className="count-chip">{t('inspect.foreign')} {counts.foreign}</span>
             <span className="count-chip">{t('inspect.uncertain')} {counts.uncertain}</span>
           </div>
-          <ul style={{ margin: '0.75rem 0', paddingLeft: '1.2rem', fontSize: '0.85rem', color: 'var(--color-text-muted, #5c6b5a)' }}>
+          <ul style={{ margin: '0.75rem 0', paddingLeft: '1.2rem', fontSize: '0.85rem', color: 'var(--muted, #A6B3A2)' }}>
             <li>{t('inspect.legendWhole')}</li>
             <li>{t('inspect.legendBroken')}</li>
             <li>{t('inspect.legendForeign')}</li>
