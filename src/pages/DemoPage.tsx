@@ -6,6 +6,7 @@ import type { InspectionResult, ComponentFeatures } from '../types';
 import { ALGORITHM_VERSION } from '../types';
 import { useI18n } from '../i18n';
 import { buildInspectionCsv, downloadTextFile, printInspectionReport } from '../lib/exportReport';
+import { DecisionPanel } from '../components/DecisionPanel';
 
 function createSyntheticGrainImage(): string {
   const canvas = document.createElement('canvas');
@@ -18,10 +19,9 @@ function createSyntheticGrainImage(): string {
     { x: 320, y: 90, rx: 30, ry: 19, rot: 0.5, color: '#b8954a' },
     { x: 420, y: 140, rx: 27, ry: 18, rot: -0.4, color: '#c9a85e' },
     { x: 180, y: 340, rx: 22, ry: 10, rot: 0.8, color: '#c4a35a' },
-    { x: 500, y: 300, rx: 22, ry: 20, rot: 0, color: '#000000' }, // solid dark foreign candidate
+    { x: 500, y: 300, rx: 22, ry: 20, rot: 0, color: '#000000' },
   ];
   for (const g of grains) {
-    // Solid dark foreign marker uses a hard rectangle (no anti-aliased edge bias)
     if (g.color === '#000000' || g.color === '#1a1a1a') {
       ctx.fillStyle = '#000000';
       ctx.fillRect(g.x - g.rx, g.y - g.ry, g.rx * 2, g.ry * 2);
@@ -141,6 +141,7 @@ export function DemoPage() {
         </button>
       </div>
       {result && (
+        <>
         <div className="card">
           <div className="counts-row">
             <span className="count-chip">{t('inspect.whole')} {counts.whole}</span>
@@ -171,6 +172,14 @@ export function DemoPage() {
             )}
           </div>
         </div>
+        <DecisionPanel
+          grainType="wheat"
+          counts={counts}
+          detections={detections}
+          quality={result.quality}
+          imageCount={1}
+        />
+        </>
       )}
     </div>
   );
