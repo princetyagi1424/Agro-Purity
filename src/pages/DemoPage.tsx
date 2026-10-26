@@ -5,6 +5,7 @@ import { saveRecord, generateId, dataUrlToBlob } from '../lib/storage/db';
 import type { InspectionResult, ComponentFeatures } from '../types';
 import { ALGORITHM_VERSION } from '../types';
 import { useI18n } from '../i18n';
+import { buildInspectionCsv, downloadTextFile, printInspectionReport } from '../lib/exportReport';
 
 function createSyntheticGrainImage(): string {
   const canvas = document.createElement('canvas');
@@ -64,6 +65,41 @@ export function DemoPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportCsv = () => {
+    if (!result) return;
+    const csv = buildInspectionCsv({
+      createdAt: new Date().toISOString(),
+      grainType: 'wheat',
+      inputSource: 'demo',
+      algorithmVersion: ALGORITHM_VERSION,
+      synthetic: true,
+      counts: result.counts,
+      adjustedCounts: counts,
+      detections,
+      disclaimer: t('disclaimer'),
+    });
+    downloadTextFile(csv, `demo-${Date.now()}.csv`, 'text/csv;charset=utf-8');
+  };
+
+  const printReport = () => {
+    if (!result) return;
+    printInspectionReport({
+      title: t('demo.title'),
+      disclaimer: t('disclaimer'),
+      meta: [['Source', 'demo'], ['Algorithm', ALGORITHM_VERSION]],
+      counts,
+      labels: {
+        whole: t('inspect.whole'),
+        broken: t('inspect.broken'),
+        foreign: t('inspect.foreign'),
+        uncertain: t('inspect.uncertain'),
+      },
+      imageSrc: result.annotatedImageDataUrl || demoSrc,
+      synthetic: true,
+      syntheticLabel: t('history.synthetic'),
+    });
+  };
+
   const saveDemo = async () => {
     if (!result) return;
     setSaving(true);
@@ -91,7 +127,7 @@ export function DemoPage() {
       <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>{t('demo.title')}</h1>
       <div className="alert alert-info">{t('demo.banner')}</div>
       <div className="disclaimer">{t('disclaimer')}</div>
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       <div className="card">
         <img src={demoSrc} alt={t('demo.title')} className="result-img" />
         <button type="button" className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={run} disabled={running}>
@@ -114,6 +150,8 @@ export function DemoPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
             <button type="button" className="btn btn-primary btn-sm" onClick={saveDemo} disabled={saving}>{saving ? t('inspect.saving') : t('demo.save')}</button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={exportJson}>{t('demo.exportJson')}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={exportCsv}>{t('inspect.exportCsv')}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={printReport}>{t('inspect.printReport')}</button>
             {result.annotatedImageDataUrl && (
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
                 const a = document.createElement('a'); a.href = result.annotatedImageDataUrl!; a.download = 'demo-annotated.png'; a.click();
