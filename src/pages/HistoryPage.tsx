@@ -15,26 +15,58 @@ function RecordList() {
   const { t } = useI18n();
   const [records, setRecords] = useState<InspectionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
   const refresh = () => {
     setLoading(true);
     listRecords().then(setRecords).catch(() => setRecords([])).finally(() => setLoading(false));
   };
   useEffect(() => { refresh(); }, []);
+
+  const filtered = searchQuery.trim()
+    ? records.filter((r) => {
+        const q = searchQuery.trim().toLowerCase();
+        const date = new Date(r.createdAt).toLocaleString().toLowerCase();
+        const syn = (r.inputSource === 'demo' || r.notes === 'synthetic-demo') ? 'synthetic demo' : '';
+        return (
+          r.id.toLowerCase().includes(q) ||
+          r.grainType.toLowerCase().includes(q) ||
+          r.inputSource.toLowerCase().includes(q) ||
+          date.includes(q) ||
+          syn.includes(q)
+        );
+      })
+    : records;
+
   if (loading) return <div className="card" style={{ textAlign: 'center' }}><div className="spinner" /><p>{t('common.loading')}</p></div>;
   return (
     <div>
       <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>{t('history.title')}</h1>
+      {records.length > 0 && (
+        <div className="card" style={{ padding: '0.75rem 1rem' }}>
+          <label htmlFor="history-search" className="sr-only">{t('history.search')}</label>
+          <input
+            id="history-search"
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('history.searchPlaceholder')}
+            style={{ width: '100%', minHeight: 44, padding: '0.5rem 0.75rem', borderRadius: 10, border: '1px solid #c5d5c4' }}
+          />
+        </div>
+      )}
       {records.length === 0 ? (
         <div className="card empty-state">
           <p>{t('history.empty')}</p>
           <Link to="/inspect" className="btn btn-primary">{t('history.start')}</Link>
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="card empty-state"><p>{t('history.noMatches')}</p></div>
       ) : (
         <>
           <div className="card" style={{ padding: 0 }}>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {records.map((r) => (
+              {filtered.map((r) => (
                 <li key={r.id} style={{ padding: '0.9rem 1.1rem', borderBottom: '1px solid var(--color-border, #d8e0d4)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div>
                     <Link to={`/history/${r.id}`} style={{ fontWeight: 600 }}>{new Date(r.createdAt).toLocaleString()}</Link>
@@ -120,7 +152,6 @@ function RecordDetail({ id }: { id: string }) {
             URL.revokeObjectURL(url);
           }}>{t('inspect.exportJson')}</button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
-            if (!record) return;
             const csv = buildInspectionCsv({
               id: record.id, createdAt: record.createdAt, grainType: record.grainType,
               inputSource: record.inputSource, algorithmVersion: record.algorithmVersion,
@@ -130,7 +161,6 @@ function RecordDetail({ id }: { id: string }) {
             downloadTextFile(csv, `${record.id}.csv`, 'text/csv;charset=utf-8');
           }}>{t('inspect.exportCsv')}</button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
-            if (!record) return;
             printInspectionReport({
               title: t('history.title'), disclaimer: record.disclaimer,
               meta: [['ID', record.id], [t('inspect.title'), record.grainType], ['Algorithm', record.algorithmVersion]],
