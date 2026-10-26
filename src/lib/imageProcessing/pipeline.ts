@@ -5,17 +5,27 @@ import { toGrayscale } from './grayscale';
 import { otsuThreshold } from './otsu';
 import { segmentBinary } from './segmentation';
 import { checkImageQuality } from './qualityChecks';
-import type { InspectionResult, ComponentFeatures, DetectionLabel, ClassificationCounts } from '../../types';
-import { ALGORITHM_VERSION, DEFAULT_CLASSIFIER_CONFIG } from '../../types';
+import { classify } from './classifyRules';
+import { refineMask, dedupeDetections } from './morphology';
+export { dedupeDetections } from './morphology';
+import type { InspectionResult, ComponentFeatures, ClassificationCounts } from '../../types';
+import { ALGORITHM_VERSION } from '../../types';
 
 const MAX_PROCESS_DIM = 1280;
 
 function connectedComponents(mask: Uint8Array, gray: Uint8Array, width: number, height: number) {
   const n = width * height;
   const labels = new Int32Array(n);
-  const parent = new Int32Array(Math.min(n, 200000) + 16);
+  let parent = new Int32Array(1024);
   for (let i = 0; i < parent.length; i++) parent[i] = i;
   let nextId = 1;
+  const ensureParent = (id: number) => {
+    if (id < parent.length) return;
+    const np = new Int32Array(Math.max(id + 64, parent.length * 2));
+    np.set(parent);
+    for (let i = parent.length; i < np.length; i++) np[i] = i;
+    parent = np;
+  };
   const find = (x: number): number => {
     let r = x;
     while (parent[r] !== r) r = parent[r]!;
@@ -27,7 +37,7 @@ function connectedComponents(mask: Uint8Array, gray: Uint8Array, width: number, 
     const ra = find(a), rb = find(b);
     if (ra !== rb) parent[rb] = ra;
   };
-  const neigh = [[-1,-1],[0,-1],[1,-1],[-1,0]] as const;
+  const neigh = [[-1, -1], [0, -1], [1, -1], [-1, 0]] as const;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
@@ -40,6 +50,7 @@ function connectedComponents(mask: Uint8Array, gray: Uint8Array, width: number, 
         if (labels[nidx]! > 0) ns.push(labels[nidx]!);
       }
       if (ns.length === 0) {
+        ensureParent(nextId);
         labels[idx] = nextId;
         parent[nextId] = nextId;
         nextId++;
@@ -75,45 +86,6 @@ function connectedComponents(mask: Uint8Array, gray: Uint8Array, width: number, 
     }
   }
   return { components: [...comps.values()], labelCount: comps.size };
-}
-
-function classify(
-  area: number,
-  aspect: number,
-  lum: number,
-  rgb?: { r: number; g: number; b: number }
-): { label: DetectionLabel; reason: string } {
-  const cfg = DEFAULT_CLASSIFIER_CONFIG;
-  if (area < cfg.noiseAreaMax) return { label: 'noise', reason: `Area ${area}px noise` };
-  if (area < cfg.minArea) return { label: 'uncertain', reason: `Area ${area}px small` };
-  if (area > cfg.maxArea) return { label: 'uncertain', reason: `Area ${area}px large` };
-
-  // Foreign material: dark and/or low-chroma (stones, grit, dark debris)
-  const r = rgb?.r ?? lum;
-  const g = rgb?.g ?? lum;
-  const b = rgb?.b ?? lum;
-  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-  const channelMin = Math.min(r, g, b);
-  // Use both mean luma and darkest channel so anti-aliased edges cannot hide a dark core
-  const isDark = lum < cfg.foreignLuminanceMax || channelMin < cfg.foreignLuminanceMax * 0.85;
-  const isDarkNeutral = (lum < 110 || channelMin < 95) && chroma < 32;
-  if (isDark || isDarkNeutral) {
-    return {
-      label: 'foreign',
-      reason: isDark
-        ? `Low luminance ${lum.toFixed(0)} (min channel ${channelMin.toFixed(0)})`
-        : `Dark neutral (lum ${lum.toFixed(0)}, chroma ${chroma.toFixed(0)})`,
-    };
-  }
-
-  if (aspect < cfg.brokenAspectMax || aspect > 1 / cfg.brokenAspectMax) {
-    if (aspect < 0.3 || aspect > 3.5) return { label: 'uncertain', reason: `Extreme aspect ${aspect.toFixed(2)}` };
-    return { label: 'broken', reason: `Aspect ${aspect.toFixed(2)}` };
-  }
-  if (aspect >= cfg.wholeAspectMin && aspect <= cfg.wholeAspectMax) {
-    return { label: 'whole', reason: `Area ${area} aspect ${aspect.toFixed(2)}` };
-  }
-  return { label: 'uncertain', reason: 'Ambiguous features' };
 }
 
 export function countLabels(detections: ComponentFeatures[]): ClassificationCounts {
@@ -205,7 +177,16 @@ export function analyzeImageData(
   }
 
   const otsu = otsuThreshold(gray);
-  const seg = segmentBinary(gray, otsu.threshold, 'dark-on-light');
+  const segRaw = segmentBinary(gray, otsu.threshold, 'dark-on-light');
+  const refined = refineMask(segRaw.mask, width, height);
+  let fg = 0;
+  for (let i = 0; i < refined.length; i++) if (refined[i]) fg++;
+  const seg = {
+    mask: refined,
+    polarity: segRaw.polarity,
+    threshold: segRaw.threshold,
+    foregroundRatio: fg / Math.max(width * height, 1),
+  };
   if (seg.foregroundRatio < 0.001 || seg.foregroundRatio > 0.85) {
     return {
       detections: [],
@@ -256,12 +237,12 @@ export function analyzeImageData(
       label, labelReason: reason,
     });
   }
-  const kept = detections.filter((d) => d.label !== 'noise');
-  const counts = countLabels(detections);
+  const deduped = dedupeDetections(detections);
+  const counts = countLabels(deduped);
   return {
-    detections, counts, quality,
+    detections: deduped, counts, quality,
     diagnostics: {
-      threshold: otsu.threshold, componentCountRaw: ccl.labelCount, componentCountKept: kept.length,
+      threshold: otsu.threshold, componentCountRaw: ccl.labelCount, componentCountKept: deduped.length,
       processingMs: Math.round(performance.now() - t0), algorithmVersion: ALGORITHM_VERSION,
       resizedWidth: width, resizedHeight: height, polarity: seg.polarity,
     },
