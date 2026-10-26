@@ -2,12 +2,20 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { runPipeline, countLabels } from '../lib/imageProcessing/pipeline';
 import { saveRecord, generateId, dataUrlToBlob } from '../lib/storage/db';
-import type { GrainType, InputSource, InspectionResult, ComponentFeatures, DetectionLabel } from '../types';
+import type {
+  GrainType,
+  InputSource,
+  InspectionResult,
+  ComponentFeatures,
+  DetectionLabel,
+} from '../types';
 import { ALGORITHM_VERSION } from '../types';
 import { useI18n } from '../i18n';
+import type { TranslationKey as TKey } from '../i18n';
 
-type Step = 'setup' | 'camera' | 'preview' | 'processing' | 'results';
+type Step = 'setup' | 'camera_loading' | 'camera' | 'preview' | 'processing' | 'results';
 type ViewMode = 'annotated' | 'original';
+
 const ALLOWED = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 const ALLOWED_EXT = /\.(jpe?g|png|webp)$/i;
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -16,6 +24,18 @@ function isLikelyImage(file: File): boolean {
   if (ALLOWED.has(file.type.toLowerCase())) return true;
   if (!file.type || file.type === 'application/octet-stream') return ALLOWED_EXT.test(file.name);
   return false;
+}
+
+function qualityKey(code: string): TKey | null {
+  const map: Record<string, TKey> = {
+    too_small: 'quality.too_small',
+    too_dark: 'quality.too_dark',
+    too_bright: 'quality.too_bright',
+    low_contrast: 'quality.low_contrast',
+    empty_scene: 'quality.empty_scene',
+    too_many_objects: 'quality.too_many_objects',
+  };
+  return map[code] ?? null;
 }
 
 export function InspectPage() {
@@ -40,13 +60,24 @@ export function InspectPage() {
     setStream(null);
   }, [stream]);
 
-  useEffect(() => () => {
-    stopCamera();
-    if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
-  }, [stopCamera, imageUrl]);
+  useEffect(
+    () => () => {
+      stopCamera();
+      if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
+    },
+    [stopCamera, imageUrl]
+  );
 
   useEffect(() => {
-    if (step === 'camera' && videoRef.current && stream) videoRef.current.srcObject = stream;
+    const video = videoRef.current;
+    if (step !== 'camera' || !video || !stream) return;
+    video.srcObject = stream;
+    const play = async () => {
+      try { await video.play(); } catch { /* autoplay */ }
+    };
+    if (video.readyState >= 2) play();
+    else video.onloadedmetadata = () => play();
+    return () => { video.onloadedmetadata = null; };
   }, [step, stream]);
 
   const openFilePicker = () => {
@@ -59,25 +90,58 @@ export function InspectPage() {
   const startCamera = async () => {
     setError(null);
     stopCamera();
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setError(t('inspect.secureContext'));
+      setStep('setup');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(t('inspect.cameraUnavailable'));
+      setStep('setup');
+      return;
+    }
+    setStep('camera_loading');
     try {
-      if (!navigator.mediaDevices?.getUserMedia) { setError(t('inspect.cameraUnavailable')); return; }
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      setStream(s); setInputSource('camera'); setStep('camera');
-    } catch { setError(t('inspect.cameraDenied')); }
+      let s: MediaStream;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch {
+        s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      setStream(s);
+      setInputSource('camera');
+      setStep('camera');
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError(t('inspect.cameraDenied'));
+      } else {
+        setError(t('inspect.cameraUnavailable'));
+      }
+      setStep('setup');
+    }
   };
 
   const capture = () => {
     const v = videoRef.current;
-    if (!v?.videoWidth) return;
+    if (!v || !v.videoWidth) {
+      setError(t('inspect.noVideo'));
+      return;
+    }
     const c = document.createElement('canvas');
-    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
     c.getContext('2d')?.drawImage(v, 0, 0);
     c.toBlob((b) => {
-      if (!b) return;
+      if (!b) { setError(t('inspect.noVideo')); return; }
       stopCamera();
       if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
       setImageUrl(URL.createObjectURL(b));
       setStep('preview');
+      setError(null);
     }, 'image/jpeg', 0.92);
   };
 
@@ -115,7 +179,8 @@ export function InspectPage() {
   const counts = countLabels(detections);
 
   const downloadDataUrl = (dataUrl: string, filename: string) => {
-    const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
+    const a = document.createElement('a');
+    a.href = dataUrl; a.download = filename; a.click();
   };
 
   const exportJson = () => {
@@ -128,7 +193,8 @@ export function InspectPage() {
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `agropurity-${Date.now()}.json`; a.click();
+    const a = document.createElement('a');
+    a.href = url; a.download = `agropurity-${Date.now()}.json`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -168,7 +234,17 @@ export function InspectPage() {
     <div>
       <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>{t('inspect.title')}</h1>
       <div className="disclaimer">{t('disclaimer')}</div>
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      {error && (
+        <div className="alert alert-error" role="alert">
+          {error}
+          {step === 'setup' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={startCamera}>{t('inspect.tryAgain')}</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={openFilePicker}>{t('inspect.uploadInstead')}</button>
+            </div>
+          )}
+        </div>
+      )}
 
       <input
         id={fileInputId}
@@ -182,7 +258,14 @@ export function InspectPage() {
       {step === 'setup' && (
         <div className="card">
           <p>{t('inspect.wheatOnly')}</p>
-          <div className="file-upload-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>{t('inspect.photoTipsTitle')}</h3>
+          <ol style={{ margin: '0 0 1rem', paddingLeft: '1.25rem', color: 'var(--color-text-muted, #5c6b5a)' }}>
+            <li>{t('inspect.photoTip1')}</li>
+            <li>{t('inspect.photoTip2')}</li>
+            <li>{t('inspect.photoTip3')}</li>
+            <li>{t('inspect.photoTip4')}</li>
+          </ol>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             <button type="button" className="btn btn-primary" onClick={startCamera}>{t('inspect.openCamera')}</button>
             <button type="button" className="btn btn-secondary" onClick={openFilePicker}>{t('inspect.upload')}</button>
             <label htmlFor={fileInputId} className="btn btn-secondary" style={{ cursor: 'pointer' }}>{t('inspect.upload')}</label>
@@ -190,12 +273,22 @@ export function InspectPage() {
         </div>
       )}
 
+      {step === 'camera_loading' && (
+        <div className="card" style={{ textAlign: 'center' }}>
+          <div className="spinner" />
+          <p>{t('inspect.requestingCamera')}</p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { stopCamera(); setStep('setup'); }}>{t('inspect.cancel')}</button>
+        </div>
+      )}
+
       {step === 'camera' && (
         <div className="card">
-          <video ref={videoRef} className="video-preview" autoPlay playsInline muted />
+          <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>{t('inspect.captureHint')}</p>
+          <video ref={videoRef} className="video-preview" autoPlay playsInline muted style={{ width: '100%', maxHeight: '60vh', background: '#111', borderRadius: 12 }} />
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={capture}>{t('inspect.capture')}</button>
             <button type="button" className="btn btn-secondary" onClick={() => { stopCamera(); setStep('setup'); }}>{t('inspect.cancel')}</button>
+            <button type="button" className="btn btn-secondary" onClick={openFilePicker}>{t('inspect.uploadInstead')}</button>
           </div>
         </div>
       )}
@@ -222,11 +315,14 @@ export function InspectPage() {
           {!result.quality.ok && (
             <div className="alert alert-error">
               <strong>{t('inspect.qualityIssues')}</strong>
-              <ul>{result.quality.issues.map((i) => <li key={i.code}>{i.message}</li>)}</ul>
+              <ul>
+                {result.quality.issues.map((i) => {
+                  const qk = qualityKey(i.code);
+                  return <li key={i.code}>{qk ? t(qk) : i.message}{i.recommendation ? ` — ${i.recommendation}` : ''}</li>;
+                })}
+              </ul>
               {result.detections.length === 0 && (
-                <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => analyse(true)}>
-                  {t('inspect.continueAnyway')}
-                </button>
+                <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => analyse(true)}>{t('inspect.continueAnyway')}</button>
               )}
             </div>
           )}
@@ -259,10 +355,12 @@ export function InspectPage() {
                   <span>#{d.id}</span>
                   <select value={d.label} aria-label={`${t('inspect.label')} ${d.id}`} onChange={(e) => setDetections((prev) => prev.map((x) => x.id === d.id ? { ...x, originalLabel: x.originalLabel ?? x.label, label: e.target.value as DetectionLabel, manuallyAdjusted: true } : x))}>
                     {(['whole','broken','foreign','uncertain','ignored'] as DetectionLabel[]).map((l) => (
-                      <option key={l} value={l}>{t(`inspect.${l}` as 'inspect.whole')}</option>
+                      <option key={l} value={l}>{t(`inspect.${l}` as TKey)}</option>
                     ))}
                   </select>
-                  <span style={{ color: 'var(--color-text-muted)' }}>{d.labelReason}</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>
+                    {d.manuallyAdjusted && d.originalLabel ? `${d.originalLabel} → ${d.label}` : d.labelReason}
+                  </span>
                 </div>
               ))}
             </div>
