@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Locale, TranslationKey } from './types';
 import { en } from './en';
 import { hi } from './hi';
@@ -14,18 +6,16 @@ import { ta } from './ta';
 
 const STORAGE_KEY = 'agropurity-lang';
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
-  en: en as unknown as Record<TranslationKey, string>,
-  hi: hi as unknown as Record<TranslationKey, string>,
-  ta: ta as unknown as Record<TranslationKey, string>,
+  en: en as Record<TranslationKey, string>,
+  hi: hi as Record<TranslationKey, string>,
+  ta: ta as Record<TranslationKey, string>,
 };
 
 function detectInitial(): Locale {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'en' || stored === 'hi' || stored === 'ta') return stored;
-  } catch {
-    /* ignore */
-  }
+  } catch { /* */ }
   return 'en';
 }
 
@@ -41,31 +31,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() =>
     typeof window !== 'undefined' ? detectInitial() : 'en'
   );
-
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.setItem(STORAGE_KEY, next); } catch { /* */ }
   }, []);
-
-  useEffect(() => {
-    document.documentElement.lang = locale;
-    document.documentElement.dir = 'ltr';
-  }, [locale]);
-
-  const t = useCallback(
-    (key: TranslationKey) => {
-      const dict = dictionaries[locale] ?? dictionaries.en;
-      return dict[key] ?? dictionaries.en[key] ?? key;
-    },
-    [locale]
-  );
-
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
+  const t = useCallback((key: TranslationKey) => dictionaries[locale]?.[key] ?? dictionaries.en[key] ?? key, [locale]);
   const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
-
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
