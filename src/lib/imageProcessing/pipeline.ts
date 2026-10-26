@@ -177,7 +177,22 @@ export function analyzeImageData(
   }
 
   const otsu = otsuThreshold(gray);
-  const segRaw = segmentBinary(gray, otsu.threshold, 'dark-on-light');
+  // The capture guidance requires grains on white paper. Infer foreground polarity
+  // from the actual image border (background candidate), not from the global dark
+  // pixel ratio. A dense grain sample can occupy most pixels and fool a global
+  // ratio heuristic into inverting the mask and boxing the white background.
+  const borderValues: number[] = [];
+  const borderStep = Math.max(1, Math.floor(Math.min(width, height) / 180));
+  for (let x = 0; x < width; x += borderStep) {
+    borderValues.push(gray[x]!, gray[(height - 1) * width + x]!);
+  }
+  for (let y = 0; y < height; y += borderStep) {
+    borderValues.push(gray[y * width]!, gray[y * width + width - 1]!);
+  }
+  borderValues.sort((a, b) => a - b);
+  const borderMedian = borderValues[Math.floor(borderValues.length / 2)] ?? 255;
+  const inferredPolarity = borderMedian >= otsu.threshold ? 'dark-on-light' : 'light-on-dark';
+  const segRaw = segmentBinary(gray, otsu.threshold, inferredPolarity);
   const refined = refineMask(segRaw.mask, width, height);
   let fg = 0;
   for (let i = 0; i < refined.length; i++) if (refined[i]) fg++;
