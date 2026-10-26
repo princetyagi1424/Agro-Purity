@@ -77,6 +77,25 @@ export type TranslationKey =
   "inspect.label" |
   "inspect.showOriginal" |
   "inspect.showAnnotated" |
+  "inspect.requestingCamera" |
+  "inspect.tryAgain" |
+  "inspect.uploadInstead" |
+  "inspect.secureContext" |
+  "inspect.noVideo" |
+  "inspect.captureHint" |
+  "inspect.photoTipsTitle" |
+  "inspect.photoTip1" |
+  "inspect.photoTip2" |
+  "inspect.photoTip3" |
+  "inspect.photoTip4" |
+  "inspect.savedOk" |
+  "inspect.exportOk" |
+  "quality.too_small" |
+  "quality.too_dark" |
+  "quality.too_bright" |
+  "quality.low_contrast" |
+  "quality.empty_scene" |
+  "quality.too_many_objects" |
   "demo.title" |
   "demo.banner" |
   "demo.run" |
