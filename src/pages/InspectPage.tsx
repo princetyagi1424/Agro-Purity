@@ -12,6 +12,7 @@ import type {
 import { ALGORITHM_VERSION } from '../types';
 import { useI18n } from '../i18n';
 import type { TranslationKey as TKey } from '../i18n';
+import { buildInspectionCsv, downloadTextFile, printInspectionReport } from '../lib/exportReport';
 
 type Step = 'setup' | 'camera_loading' | 'camera' | 'preview' | 'processing' | 'results';
 type ViewMode = 'annotated' | 'original';
@@ -52,6 +53,8 @@ export function InspectPage() {
   const [saving, setSaving] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('annotated');
+  const [analysisStage, setAnalysisStage] = useState<'prepare' | 'analyse' | 'annotate' | 'done'>('prepare');
+  const analysisTokenRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -156,7 +159,7 @@ export function InspectPage() {
     const probe = new Image();
     probe.onload = () => {
       setImageUrl(url); setInputSource('upload'); setStep('preview');
-      setResult(null); setDetections([]);
+      analysisTokenRef.current += 1; setResult(null); setDetections([]);
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setError(t('inspect.decodeFail')); };
     probe.src = url;
@@ -164,13 +167,24 @@ export function InspectPage() {
 
   const analyse = async (force = false) => {
     if (!imageUrl) return;
-    setStep('processing'); setError(null);
+    const token = ++analysisTokenRef.current;
+    setStep('processing');
+    setError(null);
+    setAnalysisStage('prepare');
     try {
+      await new Promise((r) => setTimeout(r, 30));
+      if (token !== analysisTokenRef.current) return;
+      setAnalysisStage('analyse');
       const res = await runPipeline(imageUrl, { forceContinue: force });
-      setResult(res); setDetections(res.detections);
+      if (token !== analysisTokenRef.current) return;
+      setAnalysisStage('annotate');
+      setResult(res);
+      setDetections(res.detections);
       setViewMode(res.annotatedImageDataUrl ? 'annotated' : 'original');
+      setAnalysisStage('done');
       setStep('results');
     } catch (e) {
+      if (token !== analysisTokenRef.current) return;
       setError(e instanceof Error ? e.message : t('inspect.analysisFail'));
       setStep('preview');
     }
@@ -196,6 +210,45 @@ export function InspectPage() {
     const a = document.createElement('a');
     a.href = url; a.download = `agropurity-${Date.now()}.json`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportCsv = () => {
+    if (!result) return;
+    const csv = buildInspectionCsv({
+      createdAt: new Date().toISOString(),
+      grainType,
+      inputSource,
+      algorithmVersion: ALGORITHM_VERSION,
+      synthetic: false,
+      counts: result.counts,
+      adjustedCounts: counts,
+      detections,
+      disclaimer: t('disclaimer'),
+      qualityMessages: result.quality.issues.map((i) => i.message),
+    });
+    downloadTextFile(csv, `agropurity-${Date.now()}.csv`, 'text/csv;charset=utf-8');
+  };
+
+  const printReport = () => {
+    if (!result) return;
+    printInspectionReport({
+      title: t('inspect.title'),
+      disclaimer: t('disclaimer'),
+      meta: [
+        [t('inspect.title'), grainType],
+        ['Algorithm', ALGORITHM_VERSION],
+        ['Source', inputSource],
+        [t('inspect.countsTitle'), new Date().toLocaleString()],
+      ],
+      counts,
+      labels: {
+        whole: t('inspect.whole'),
+        broken: t('inspect.broken'),
+        foreign: t('inspect.foreign'),
+        uncertain: t('inspect.uncertain'),
+      },
+      imageSrc: result.annotatedImageDataUrl || imageUrl,
+    });
   };
 
   const save = async () => {
@@ -235,7 +288,7 @@ export function InspectPage() {
       <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>{t('inspect.title')}</h1>
       <div className="disclaimer">{t('disclaimer')}</div>
       {error && (
-        <div className="alert alert-error" role="alert">
+        <div className="alert alert-error" role="alert" aria-live="assertive">
           {error}
           {step === 'setup' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -305,8 +358,16 @@ export function InspectPage() {
       )}
 
       {step === 'processing' && (
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div className="spinner" /><p>{t('inspect.analysing')}</p>
+        <div className="card" style={{ textAlign: 'center' }} role="status" aria-live="polite" aria-busy="true">
+          <div className="spinner" />
+          <p>{t('inspect.analysing')}</p>
+          <p className="status-live">{t('inspect.processingHint')}</p>
+          <div className="processing-stages" aria-label={t('inspect.statusRegion')}>
+            <span className={`stage${analysisStage === 'prepare' ? ' active' : ''}`}>{t('inspect.stagePrepare')}</span>
+            <span className={`stage${analysisStage === 'analyse' ? ' active' : ''}`}>{t('inspect.stageAnalyse')}</span>
+            <span className={`stage${analysisStage === 'annotate' ? ' active' : ''}`}>{t('inspect.stageAnnotate')}</span>
+            <span className={`stage${analysisStage === 'done' ? ' active' : ''}`}>{t('inspect.stageDone')}</span>
+          </div>
         </div>
       )}
 
@@ -345,6 +406,8 @@ export function InspectPage() {
               {imageUrl && <button type="button" className="btn btn-secondary btn-sm" onClick={() => downloadDataUrl(imageUrl, 'original.png')}>{t('inspect.downloadOrig')}</button>}
               {result.annotatedImageDataUrl && <button type="button" className="btn btn-secondary btn-sm" onClick={() => downloadDataUrl(result.annotatedImageDataUrl!, 'annotated.png')}>{t('inspect.downloadAnn')}</button>}
               <button type="button" className="btn btn-secondary btn-sm" onClick={exportJson}>{t('inspect.exportJson')}</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={exportCsv}>{t('inspect.exportCsv')}</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={printReport}>{t('inspect.printReport')}</button>
             </div>
           </div>
           <div className="card">
