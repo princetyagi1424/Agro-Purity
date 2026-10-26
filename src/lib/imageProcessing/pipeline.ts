@@ -93,13 +93,15 @@ function classify(
   const g = rgb?.g ?? lum;
   const b = rgb?.b ?? lum;
   const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-  const isDark = lum < cfg.foreignLuminanceMax;
-  const isDarkNeutral = lum < 110 && chroma < 28;
+  const channelMin = Math.min(r, g, b);
+  // Use both mean luma and darkest channel so anti-aliased edges cannot hide a dark core
+  const isDark = lum < cfg.foreignLuminanceMax || channelMin < cfg.foreignLuminanceMax * 0.85;
+  const isDarkNeutral = (lum < 110 || channelMin < 95) && chroma < 32;
   if (isDark || isDarkNeutral) {
     return {
       label: 'foreign',
       reason: isDark
-        ? `Low luminance ${lum.toFixed(0)}`
+        ? `Low luminance ${lum.toFixed(0)} (min channel ${channelMin.toFixed(0)})`
         : `Dark neutral (lum ${lum.toFixed(0)}, chroma ${chroma.toFixed(0)})`,
     };
   }
@@ -176,14 +178,17 @@ function drawAnnotations(img: HTMLImageElement, detections: ComponentFeatures[],
   return canvas.toDataURL('image/png');
 }
 
-export async function runPipeline(
-  source: string | Blob,
-  options?: { forceContinue?: boolean }
-): Promise<InspectionResult> {
+/** Core analysis on raw RGBA pixels (testable without DOM Image). */
+export function analyzeImageData(
+  data: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  options?: { forceContinue?: boolean; skipAnnotation?: boolean }
+): Omit<InspectionResult, 'annotatedImageDataUrl' | 'originalImageDataUrl'> & {
+  annotatedImageDataUrl?: string;
+  originalImageDataUrl?: string;
+} {
   const t0 = performance.now();
-  const img = await loadImage(source);
-  const { imageData, scale } = readImageData(img);
-  const { data, width, height } = imageData;
   const gray = toGrayscale(data, width, height);
   const quality = checkImageQuality(gray, width, height);
   if (!quality.ok && !options?.forceContinue) {
@@ -234,7 +239,6 @@ export async function runPipeline(
       samples++;
     }
     if (samples === 0) samples = 1;
-    // Prefer full-component luma (avoids anti-aliased edge bias from sparse samples)
     const meanLuminance = c.area > 0 ? c.sumLuma / c.area : 0;
     const meanRgb = {
       r: Math.round(sumR / samples),
@@ -254,8 +258,6 @@ export async function runPipeline(
   }
   const kept = detections.filter((d) => d.label !== 'noise');
   const counts = countLabels(detections);
-  const annotated = drawAnnotations(img, kept, scale);
-
   return {
     detections, counts, quality,
     diagnostics: {
@@ -263,6 +265,22 @@ export async function runPipeline(
       processingMs: Math.round(performance.now() - t0), algorithmVersion: ALGORITHM_VERSION,
       resizedWidth: width, resizedHeight: height, polarity: seg.polarity,
     },
+  };
+}
+
+export async function runPipeline(
+  source: string | Blob,
+  options?: { forceContinue?: boolean }
+): Promise<InspectionResult> {
+  const img = await loadImage(source);
+  const { imageData, scale } = readImageData(img);
+  const { data, width, height } = imageData;
+  const core = analyzeImageData(data, width, height, options);
+  const kept = core.detections.filter((d) => d.label !== 'noise');
+  const annotated = drawAnnotations(img, kept, scale);
+
+  return {
+    ...core,
     annotatedImageDataUrl: annotated,
     originalImageDataUrl: typeof source === 'string' ? source : undefined,
   };
