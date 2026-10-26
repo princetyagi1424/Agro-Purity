@@ -10,7 +10,7 @@ import { ALGORITHM_VERSION, DEFAULT_CLASSIFIER_CONFIG } from '../../types';
 
 const MAX_PROCESS_DIM = 1280;
 
-function connectedComponents(mask: Uint8Array, width: number, height: number) {
+function connectedComponents(mask: Uint8Array, gray: Uint8Array, width: number, height: number) {
   const n = width * height;
   const labels = new Int32Array(n);
   const parent = new Int32Array(Math.min(n, 200000) + 16);
@@ -51,7 +51,7 @@ function connectedComponents(mask: Uint8Array, width: number, height: number) {
       }
     }
   }
-  type Comp = { label: number; area: number; minX: number; minY: number; maxX: number; maxY: number; sumX: number; sumY: number; samplePixels: number[] };
+  type Comp = { label: number; area: number; minX: number; minY: number; maxX: number; maxY: number; sumX: number; sumY: number; sumLuma: number; samplePixels: number[] };
   const rootMap = new Map<number, number>();
   let nextFinal = 1;
   const comps = new Map<number, Comp>();
@@ -64,25 +64,46 @@ function connectedComponents(mask: Uint8Array, width: number, height: number) {
       if (fl === undefined) {
         fl = nextFinal++;
         rootMap.set(root, fl);
-        comps.set(fl, { label: fl, area: 0, minX: x, minY: y, maxX: x, maxY: y, sumX: 0, sumY: 0, samplePixels: [] });
+        comps.set(fl, { label: fl, area: 0, minX: x, minY: y, maxX: x, maxY: y, sumX: 0, sumY: 0, sumLuma: 0, samplePixels: [] });
       }
-      labels[idx] = fl;
       const c = comps.get(fl)!;
       c.area++; c.minX = Math.min(c.minX, x); c.minY = Math.min(c.minY, y);
       c.maxX = Math.max(c.maxX, x); c.maxY = Math.max(c.maxY, y);
       c.sumX += x; c.sumY += y;
+      c.sumLuma += gray[idx] ?? 0;
       if (c.samplePixels.length < 64) c.samplePixels.push(idx);
     }
   }
-  return { components: Array.from(comps.values()), labelCount: nextFinal - 1 };
+  return { components: [...comps.values()], labelCount: comps.size };
 }
 
-function classify(area: number, aspect: number, lum: number): { label: DetectionLabel; reason: string } {
+function classify(
+  area: number,
+  aspect: number,
+  lum: number,
+  rgb?: { r: number; g: number; b: number }
+): { label: DetectionLabel; reason: string } {
   const cfg = DEFAULT_CLASSIFIER_CONFIG;
   if (area < cfg.noiseAreaMax) return { label: 'noise', reason: `Area ${area}px noise` };
   if (area < cfg.minArea) return { label: 'uncertain', reason: `Area ${area}px small` };
   if (area > cfg.maxArea) return { label: 'uncertain', reason: `Area ${area}px large` };
-  if (lum < cfg.foreignLuminanceMax) return { label: 'foreign', reason: `Low luminance ${lum.toFixed(0)}` };
+
+  // Foreign material: dark and/or low-chroma (stones, grit, dark debris)
+  const r = rgb?.r ?? lum;
+  const g = rgb?.g ?? lum;
+  const b = rgb?.b ?? lum;
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  const isDark = lum < cfg.foreignLuminanceMax;
+  const isDarkNeutral = lum < 110 && chroma < 28;
+  if (isDark || isDarkNeutral) {
+    return {
+      label: 'foreign',
+      reason: isDark
+        ? `Low luminance ${lum.toFixed(0)}`
+        : `Dark neutral (lum ${lum.toFixed(0)}, chroma ${chroma.toFixed(0)})`,
+    };
+  }
+
   if (aspect < cfg.brokenAspectMax || aspect > 1 / cfg.brokenAspectMax) {
     if (aspect < 0.3 || aspect > 3.5) return { label: 'uncertain', reason: `Extreme aspect ${aspect.toFixed(2)}` };
     return { label: 'broken', reason: `Aspect ${aspect.toFixed(2)}` };
@@ -99,25 +120,29 @@ export function countLabels(detections: ComponentFeatures[]): ClassificationCoun
   return counts;
 }
 
-export async function loadImageElement(source: string | Blob | HTMLImageElement): Promise<HTMLImageElement> {
-  if (source instanceof HTMLImageElement && source.complete && source.naturalWidth > 0) return source;
-  return new Promise((resolve, reject) => {
+async function loadImage(source: string | Blob): Promise<HTMLImageElement> {
+  const url = typeof source === 'string' ? source : URL.createObjectURL(source);
+  try {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to decode image'));
-    if (typeof source === 'string') img.src = source;
-    else if (source instanceof Blob) img.src = URL.createObjectURL(source);
-  });
+    img.decoding = 'async';
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.src = url;
+    });
+    return img;
+  } finally {
+    if (typeof source !== 'string') URL.revokeObjectURL(url);
+  }
 }
 
-function imageToImageData(img: HTMLImageElement, maxDim = MAX_PROCESS_DIM) {
+function readImageData(img: HTMLImageElement): { imageData: ImageData; scale: number } {
   const ow = img.naturalWidth || img.width;
   const oh = img.naturalHeight || img.height;
-  if (ow < 1 || oh < 1) throw new Error('Invalid image dimensions');
   let tw = ow, th = oh, scale = 1;
-  if (Math.max(ow, oh) > maxDim) {
-    scale = maxDim / Math.max(ow, oh);
+  const maxDim = Math.max(ow, oh);
+  if (maxDim > MAX_PROCESS_DIM) {
+    scale = MAX_PROCESS_DIM / Math.max(ow, oh);
     tw = Math.round(ow * scale);
     th = Math.round(oh * scale);
   }
@@ -144,28 +169,50 @@ function drawAnnotations(img: HTMLImageElement, detections: ComponentFeatures[],
     ctx.strokeStyle = colors[d.label] ?? '#fff';
     ctx.lineWidth = Math.max(2, Math.round(Math.min(w, h) / 400));
     ctx.strokeRect(d.bbox.x * inv, d.bbox.y * inv, d.bbox.width * inv, d.bbox.height * inv);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = `${Math.max(12, Math.round(Math.min(w, h) / 40))}px sans-serif`;
+    ctx.fillText(d.label, d.bbox.x * inv, Math.max(12, d.bbox.y * inv - 4));
   }
   return canvas.toDataURL('image/png');
 }
 
 export async function runPipeline(
-  source: string | Blob | HTMLImageElement,
-  options: { forceContinue?: boolean } = {}
+  source: string | Blob,
+  options?: { forceContinue?: boolean }
 ): Promise<InspectionResult> {
   const t0 = performance.now();
-  const img = await loadImageElement(source);
-  const { imageData, scale } = imageToImageData(img);
-  const { width, height, data } = imageData;
+  const img = await loadImage(source);
+  const { imageData, scale } = readImageData(img);
+  const { data, width, height } = imageData;
   const gray = toGrayscale(data, width, height);
-  const otsu = otsuThreshold(gray);
-  const seg = segmentBinary(gray, otsu.threshold);
-  const quality = checkImageQuality(gray, width, height, seg.foregroundRatio);
-
-  if (!quality.ok && !options.forceContinue) {
+  const quality = checkImageQuality(gray, width, height);
+  if (!quality.ok && !options?.forceContinue) {
     return {
       detections: [],
       counts: { whole: 0, broken: 0, foreign: 0, uncertain: 0, noise: 0, ignored: 0 },
       quality,
+      diagnostics: {
+        threshold: 0, componentCountRaw: 0, componentCountKept: 0,
+        processingMs: Math.round(performance.now() - t0), algorithmVersion: ALGORITHM_VERSION,
+        resizedWidth: width, resizedHeight: height, polarity: 'unknown',
+      },
+    };
+  }
+
+  const otsu = otsuThreshold(gray);
+  const seg = segmentBinary(gray, otsu.threshold, 'dark-on-light');
+  if (seg.foregroundRatio < 0.001 || seg.foregroundRatio > 0.85) {
+    return {
+      detections: [],
+      counts: { whole: 0, broken: 0, foreign: 0, uncertain: 0, noise: 0, ignored: 0 },
+      quality: {
+        ...quality,
+        ok: false,
+        issues: [
+          ...quality.issues,
+          { code: 'empty_scene', severity: 'error', message: 'Foreground ratio unusual', recommendation: 'Use plain white paper and a thin grain layer.' },
+        ],
+      },
       diagnostics: {
         threshold: otsu.threshold, componentCountRaw: 0, componentCountKept: 0,
         processingMs: Math.round(performance.now() - t0), algorithmVersion: ALGORITHM_VERSION,
@@ -174,27 +221,33 @@ export async function runPipeline(
     };
   }
 
-  const ccl = connectedComponents(seg.mask, width, height);
+  const ccl = connectedComponents(seg.mask, gray, width, height);
   const detections: ComponentFeatures[] = [];
   for (const c of ccl.components) {
     const bw = c.maxX - c.minX + 1;
     const bh = c.maxY - c.minY + 1;
     const aspect = bw / Math.max(bh, 1);
-    let sumR = 0, sumG = 0, sumB = 0, sumY = 0, samples = 0;
+    let sumR = 0, sumG = 0, sumB = 0, samples = 0;
     for (const idx of c.samplePixels) {
       const p = idx * 4;
       sumR += data[p] ?? 0; sumG += data[p + 1] ?? 0; sumB += data[p + 2] ?? 0;
-      sumY += gray[idx] ?? 0; samples++;
+      samples++;
     }
     if (samples === 0) samples = 1;
-    const meanLuminance = sumY / samples;
-    const { label, reason } = classify(c.area, aspect, meanLuminance);
+    // Prefer full-component luma (avoids anti-aliased edge bias from sparse samples)
+    const meanLuminance = c.area > 0 ? c.sumLuma / c.area : 0;
+    const meanRgb = {
+      r: Math.round(sumR / samples),
+      g: Math.round(sumG / samples),
+      b: Math.round(sumB / samples),
+    };
+    const { label, reason } = classify(c.area, aspect, meanLuminance, meanRgb);
     detections.push({
       id: c.label, area: c.area,
       bbox: { x: c.minX, y: c.minY, width: bw, height: bh },
       aspectRatio: Math.round(aspect * 1000) / 1000,
       centroid: { x: Math.round(c.sumX / c.area), y: Math.round(c.sumY / c.area) },
-      meanRgb: { r: Math.round(sumR / samples), g: Math.round(sumG / samples), b: Math.round(sumB / samples) },
+      meanRgb,
       meanLuminance: Math.round(meanLuminance * 10) / 10,
       label, labelReason: reason,
     });

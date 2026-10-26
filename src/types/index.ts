@@ -113,11 +113,11 @@ export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   wholeAspectMin: 0.45,
   wholeAspectMax: 2.2,
   brokenAspectMax: 0.55,
-  foreignLuminanceMax: 70,
+  foreignLuminanceMax: 85,
   noiseAreaMax: 35,
 };
 
-export const ALGORITHM_VERSION = '1.0.0-prototype';
+export const ALGORITHM_VERSION = '1.0.1-prototype';
 
 export const DISCLAIMER =
   'Preliminary visual screening aid only. Not an official grade, AGMARK certification, or legal determination. Results are heuristic and may contain errors. Always verify with authorised methods.';
