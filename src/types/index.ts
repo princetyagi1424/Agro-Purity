@@ -117,4 +117,4 @@ export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   noiseAreaMax: 35,
 };
 
-export const ALGORITHM_VERSION = '1.1.0-prototype';
+export const ALGORITHM_VERSION = '1.2.0-prototype';
