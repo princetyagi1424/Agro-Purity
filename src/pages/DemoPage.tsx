@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { runPipeline } from '../lib/imageProcessing/pipeline';
-import type { InspectionResult } from '../types';
-import { DISCLAIMER } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { runPipeline, countLabels } from '../lib/imageProcessing/pipeline';
+import { saveRecord, generateId, dataUrlToBlob } from '../lib/storage/db';
+import type { InspectionResult, ComponentFeatures } from '../types';
+import { ALGORITHM_VERSION } from '../types';
+import { useI18n } from '../i18n';
 
 function createSyntheticGrainImage(): string {
   const canvas = document.createElement('canvas');
-  canvas.width = 640;
-  canvas.height = 480;
+  canvas.width = 640; canvas.height = 480;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#f5f5f0';
-  ctx.fillRect(0, 0, 640, 480);
+  ctx.fillStyle = '#f5f5f0'; ctx.fillRect(0, 0, 640, 480);
   const grains = [
     { x: 120, y: 100, rx: 28, ry: 18, rot: 0.3, color: '#c4a35a' },
     { x: 220, y: 130, rx: 26, ry: 17, rot: -0.2, color: '#d4b36a' },
@@ -19,62 +20,106 @@ function createSyntheticGrainImage(): string {
     { x: 500, y: 280, rx: 14, ry: 12, rot: 0, color: '#3a3a3a' },
   ];
   for (const g of grains) {
-    ctx.save();
-    ctx.translate(g.x, g.y);
-    ctx.rotate(g.rot);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, g.rx, g.ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = g.color;
-    ctx.fill();
-    ctx.restore();
+    ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.rot);
+    ctx.beginPath(); ctx.ellipse(0, 0, g.rx, g.ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = g.color; ctx.fill(); ctx.restore();
   }
   return canvas.toDataURL('image/png');
 }
 
 export function DemoPage() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
   const [result, setResult] = useState<InspectionResult | null>(null);
+  const [detections, setDetections] = useState<ComponentFeatures[]>([]);
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoSrc] = useState(() => createSyntheticGrainImage());
+  const [view, setView] = useState<'original' | 'annotated'>('annotated');
 
   const run = async () => {
-    setRunning(true);
-    setError(null);
+    setRunning(true); setError(null);
     try {
       const res = await runPipeline(demoSrc, { forceContinue: true });
-      setResult(res);
+      setResult(res); setDetections(res.detections);
+      setView(res.annotatedImageDataUrl ? 'annotated' : 'original');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Demo failed');
-    } finally {
-      setRunning(false);
-    }
+      setError(e instanceof Error ? e.message : t('inspect.analysisFail'));
+    } finally { setRunning(false); }
   };
+
+  const counts = countLabels(detections);
+
+  const exportJson = () => {
+    if (!result) return;
+    const payload = {
+      kind: 'agropurity-inspection', synthetic: true, grainType: 'wheat', inputSource: 'demo',
+      algorithmVersion: ALGORITHM_VERSION, counts: result.counts, detections,
+      disclaimer: t('disclaimer'), note: 'Synthetic demo', exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `demo-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const saveDemo = async () => {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const id = generateId();
+      const orig = dataUrlToBlob(demoSrc);
+      const ann = result.annotatedImageDataUrl ? dataUrlToBlob(result.annotatedImageDataUrl) : undefined;
+      await saveRecord({
+        id, createdAt: new Date().toISOString(), grainType: 'wheat', inputSource: 'demo',
+        algorithmVersion: ALGORITHM_VERSION, counts: result.counts, adjustedCounts: counts,
+        qualityWarnings: result.quality.issues.map((i) => i.message), diagnostics: result.diagnostics,
+        originalImageKey: `${id}_o`, annotatedImageKey: `${id}_a`, detections,
+        notes: 'synthetic-demo', disclaimer: t('disclaimer'),
+      }, orig, ann);
+      navigate(`/history/${id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('inspect.saveFail'));
+    } finally { setSaving(false); }
+  };
+
+  const display = view === 'annotated' && result?.annotatedImageDataUrl ? result.annotatedImageDataUrl : demoSrc;
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>Demo mode</h1>
-      <div className="alert alert-info">
-        Synthetic engineering test image — not a real farmer sample or field trial.
-      </div>
-      <div className="disclaimer">{DISCLAIMER}</div>
+      <h1 style={{ marginTop: 0, fontSize: '1.4rem' }}>{t('demo.title')}</h1>
+      <div className="alert alert-info">{t('demo.banner')}</div>
+      <div className="disclaimer">{t('disclaimer')}</div>
+      {error && <div className="alert alert-error" role="alert">{error}</div>}
       <div className="card">
-        <img src={demoSrc} alt="Synthetic grain sample" className="result-img" />
+        <img src={demoSrc} alt={t('demo.title')} className="result-img" />
         <button type="button" className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={run} disabled={running}>
-          {running ? 'Analysing…' : 'Run analysis on demo image'}
+          {running ? t('demo.running') : t('demo.run')}
         </button>
       </div>
-      {error && <div className="alert alert-error">{error}</div>}
       {result && (
         <div className="card">
           <div className="counts-row">
-            <span className="count-chip">Whole {result.counts.whole}</span>
-            <span className="count-chip">Broken {result.counts.broken}</span>
-            <span className="count-chip">Foreign {result.counts.foreign}</span>
-            <span className="count-chip">Uncertain {result.counts.uncertain}</span>
+            <span className="count-chip">{t('inspect.whole')} {counts.whole}</span>
+            <span className="count-chip">{t('inspect.broken')} {counts.broken}</span>
+            <span className="count-chip">{t('inspect.foreign')} {counts.foreign}</span>
+            <span className="count-chip">{t('inspect.uncertain')} {counts.uncertain}</span>
           </div>
-          {result.annotatedImageDataUrl && (
-            <img src={result.annotatedImageDataUrl} alt="Annotated demo" className="result-img" />
-          )}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <button type="button" className={`btn btn-secondary btn-sm${view === 'original' ? ' active' : ''}`} onClick={() => setView('original')}>{t('inspect.showOriginal')}</button>
+            <button type="button" className={`btn btn-secondary btn-sm${view === 'annotated' ? ' active' : ''}`} onClick={() => setView('annotated')} disabled={!result.annotatedImageDataUrl}>{t('inspect.showAnnotated')}</button>
+          </div>
+          <img src={display} alt={view === 'annotated' ? t('inspect.annotated') : t('inspect.original')} className="result-img" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={saveDemo} disabled={saving}>{saving ? t('inspect.saving') : t('demo.save')}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={exportJson}>{t('demo.exportJson')}</button>
+            {result.annotatedImageDataUrl && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+                const a = document.createElement('a'); a.href = result.annotatedImageDataUrl!; a.download = 'demo-annotated.png'; a.click();
+              }}>{t('demo.downloadAnn')}</button>
+            )}
+          </div>
         </div>
       )}
     </div>
