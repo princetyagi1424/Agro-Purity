@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agropurity-shell-v1';
+const CACHE_NAME = 'agropurity-shell-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon.svg', '/demo-grain.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
