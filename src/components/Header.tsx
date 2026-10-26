@@ -6,6 +6,9 @@ const LOCALES: { code: Locale; native: string }[] = [
   { code: 'en', native: 'English' },
   { code: 'hi', native: 'हिन्दी' },
   { code: 'ta', native: 'தமிழ்' },
+  { code: 'pa', native: 'ਪੰਜਾਬੀ' },
+  { code: 'haryanvi', native: 'हरियाणवी' },
+  { code: 'mr', native: 'मराठी' },
 ];
 
 export function Header() {
