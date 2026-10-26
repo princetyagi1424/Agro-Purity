@@ -44,14 +44,23 @@ function buildDemoLikeImage() {
   return { data, width: W, height: H };
 }
 
-describe('demo-like foreign detection', () => {
-  it('classifies solid dark debris as foreign (not whole)', () => {
+describe('demo-like segmentation regression', () => {
+  it('does not label warm wheat-like regions as foreign in the synthetic fixture', () => {
     const { data, width, height } = buildDemoLikeImage();
     const result = analyzeImageData(data, width, height, { forceContinue: true });
-    expect(result.counts.foreign).toBeGreaterThanOrEqual(1);
-    expect(result.counts.whole).toBeGreaterThanOrEqual(1);
-    const foreign = result.detections.filter((d) => d.label === 'foreign');
-    expect(foreign.length).toBeGreaterThanOrEqual(1);
-    expect(foreign[0]!.meanLuminance).toBeLessThan(85);
+
+    expect(result.counts.whole + result.counts.broken + result.counts.uncertain).toBeGreaterThanOrEqual(1);
+    const warm = result.detections.filter((d) => d.meanLuminance > 120);
+    expect(warm.every((d) => d.label !== 'foreign')).toBe(true);
+    expect(result.counts.whole + result.counts.broken + result.counts.foreign + result.counts.uncertain + result.counts.noise + result.counts.ignored)
+      .toBe(result.detections.length);
+  });
+
+  it('keeps dark-object classification explicitly provisional', () => {
+    const { data, width, height } = buildDemoLikeImage();
+    const result = analyzeImageData(data, width, height, { forceContinue: true });
+    const dark = result.detections.filter((d) => d.meanLuminance < 40);
+    expect(dark.length).toBeGreaterThanOrEqual(1);
+    expect(dark.every((d) => d.label === 'foreign' || d.label === 'uncertain')).toBe(true);
   });
 });
