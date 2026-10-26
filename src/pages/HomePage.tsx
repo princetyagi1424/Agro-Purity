@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { listRecords } from '../lib/storage/db';
 import type { InspectionRecord } from '../types';
-import { useI18n } from '../i18n';
+import { useI18n, localeToBcp47 } from '../i18n';
 
 export function HomePage() {
   const { t, locale } = useI18n();
@@ -25,7 +25,7 @@ export function HomePage() {
       return;
     }
     const u = new SpeechSynthesisUtterance(helpText);
-    u.lang = locale === 'hi' ? 'hi-IN' : locale === 'ta' ? 'ta-IN' : 'en-IN';
+    u.lang = localeToBcp47(locale);
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
     setSpeaking(true);
