@@ -98,6 +98,10 @@ export type TranslationKey =
   "inspect.printReport" |
   "inspect.statusRegion" |
   "inspect.processingHint" |
+  "inspect.legendWhole" |
+  "inspect.legendBroken" |
+  "inspect.legendForeign" |
+  "inspect.legendUncertain" |
   "quality.too_small" |
   "quality.too_dark" |
   "quality.too_bright" |
@@ -123,6 +127,9 @@ export type TranslationKey =
   "history.notFound" |
   "history.loadFail" |
   "history.synthetic" |
+  "history.search" |
+  "history.searchPlaceholder" |
+  "history.noMatches" |
   "install.title" |
   "install.intro" |
   "install.standalone" |
