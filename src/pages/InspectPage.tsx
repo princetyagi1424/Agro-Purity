@@ -57,30 +57,107 @@ export function InspectPage() {
   const analysisTokenRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const stopCamera = useCallback(() => {
-    stream?.getTracks().forEach((tr) => tr.stop());
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+        video.srcObject = null;
+      } catch { /* */ }
+    }
+    const active = streamRef.current;
+    if (active) {
+      active.getTracks().forEach((tr) => {
+        try { tr.stop(); } catch { /* */ }
+      });
+      streamRef.current = null;
+    }
     setStream(null);
-  }, [stream]);
+  }, []);
 
   useEffect(
     () => () => {
-      stopCamera();
+      const video = videoRef.current;
+      if (video) {
+        try {
+          video.pause();
+          video.srcObject = null;
+        } catch { /* */ }
+      }
+      streamRef.current?.getTracks().forEach((tr) => {
+        try { tr.stop(); } catch { /* */ }
+      });
+      streamRef.current = null;
       if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
     },
-    [stopCamera, imageUrl]
+    // only on unmount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
+  // Attach stream to <video> when camera step is active (fixes mobile black screen)
   useEffect(() => {
-    const video = videoRef.current;
-    if (step !== 'camera' || !video || !stream) return;
-    video.srcObject = stream;
-    const play = async () => {
-      try { await video.play(); } catch { /* autoplay */ }
+    if (step !== 'camera' || !stream) return;
+    let cancelled = false;
+    let tries = 0;
+
+    const attach = async () => {
+      const video = videoRef.current;
+      if (!video) {
+        if (tries++ < 30 && !cancelled) {
+          requestAnimationFrame(() => { void attach(); });
+        }
+        return;
+      }
+
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+
+      const tryPlay = async () => {
+        if (cancelled) return;
+        try {
+          await video.play();
+        } catch {
+          try {
+            await new Promise<void>((resolve) => {
+              if (video.readyState >= 2) resolve();
+              else {
+                const onMeta = () => {
+                  video.removeEventListener('loadedmetadata', onMeta);
+                  resolve();
+                };
+                video.addEventListener('loadedmetadata', onMeta);
+                // safety timeout
+                setTimeout(() => {
+                  video.removeEventListener('loadedmetadata', onMeta);
+                  resolve();
+                }, 1500);
+              }
+            });
+            if (!cancelled) await video.play();
+          } catch {
+            /* capture may still work once frames exist */
+          }
+        }
+      };
+
+      await tryPlay();
     };
-    if (video.readyState >= 2) play();
-    else video.onloadedmetadata = () => play();
-    return () => { video.onloadedmetadata = null; };
+
+    void attach();
+    return () => {
+      cancelled = true;
+    };
   }, [step, stream]);
 
   const openFilePicker = () => {
@@ -104,28 +181,37 @@ export function InspectPage() {
       return;
     }
     setStep('camera_loading');
-    try {
-      let s: MediaStream;
+    // Try simple constraints first — complex ideal width/height often black-screens on mobile
+    const attempts: MediaStreamConstraints[] = [
+      { audio: false, video: { facingMode: { ideal: 'environment' } } },
+      { audio: false, video: { facingMode: 'environment' } },
+      { audio: false, video: { facingMode: 'user' } },
+      { audio: false, video: true },
+    ];
+    let s: MediaStream | null = null;
+    let lastErr: unknown = null;
+    for (const constraints of attempts) {
       try {
-        s = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-      } catch {
-        s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        s = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        lastErr = err;
       }
-      setStream(s);
-      setInputSource('camera');
-      setStep('camera');
-    } catch (err) {
-      const name = err instanceof DOMException ? err.name : '';
+    }
+    if (!s) {
+      const name = lastErr instanceof DOMException ? lastErr.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setError(t('inspect.cameraDenied'));
       } else {
         setError(t('inspect.cameraUnavailable'));
       }
       setStep('setup');
+      return;
     }
+    streamRef.current = s;
+    setStream(s);
+    setInputSource('camera');
+    setStep('camera');
   };
 
   const capture = () => {
@@ -337,7 +423,15 @@ export function InspectPage() {
       {step === 'camera' && (
         <div className="card">
           <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>{t('inspect.captureHint')}</p>
-          <video ref={videoRef} className="video-preview" autoPlay playsInline muted style={{ width: '100%', maxHeight: '60vh', background: '#111', borderRadius: 12 }} />
+          <div className="camera-preview-wrap">
+            <video
+              ref={videoRef}
+              className="video-preview"
+              autoPlay
+              playsInline
+              muted
+            />
+          </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={capture}>{t('inspect.capture')}</button>
             <button type="button" className="btn btn-secondary" onClick={() => { stopCamera(); setStep('setup'); }}>{t('inspect.cancel')}</button>
